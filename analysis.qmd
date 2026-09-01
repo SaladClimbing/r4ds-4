@@ -2,4 +2,53 @@
 title: "Crypto Markets"
 format: html
 authour: "Andrew Lucas"
+execute:
+    echo: false
 ---
+
+```{r}
+#| message: false
+#| label: setup
+
+library(arrow)
+library(tidyverse)
+```
+
+```{r}
+#| cache: true
+
+prices <- read_parquet("data/daily_prices.parquet")
+metadata <- read_parquet("data/coin_metadata.parquet") |> 
+  mutate(launch_date_parsed = parse_date_time(launch_date, orders = c("ymd", "mdy")) |> as_date())
+categories <- read_parquet("data/categories.parquet") |> 
+  rename(category_description = description)
+
+crypto <- prices |> 
+  left_join(metadata, by = "coin_id") |> 
+  left_join(categories, by = "category_id") |> 
+  mutate(date = ymd(date_raw))
+```
+
+```{r}
+crypto |> 
+  group_by(date, category_name) |> 
+  summarize(total_market_cap = sum(market_cap_usd, na.rm = TRUE), .groups = "drop") |> 
+  mutate(category_name = fct_reorder(category_name, total_market_cap, sum, .desc = TRUE)) |> 
+  ggplot(aes(x = date, y = total_market_cap, fill = category_name)) +
+  geom_area(position = "fill") +
+  geom_vline(xintercept = as.Date("2022-05-09"), linetype = "dashed", color = "black", linewidth = 0.5) +
+  geom_vline(xintercept = as.Date("2022-11-08"), linetype = "dashed", color = "black", linewidth = 0.5) +
+  annotate("text", x = as.Date("2022-05-09"), y = 1.02, label = "Luna / UST crash", hjust = 1, size = 3, vjust = 0) +
+  annotate("text", x = as.Date("2022-11-08"), y = 1.02, label = "FTX collapse", hjust = 0, size = 3, vjust = 0) +
+  scale_y_continuous(labels = scales::label_percent(), expand = expansion(mult = c(0, 0.08))) +
+  scale_fill_viridis_d() +
+  labs(
+    title = "Evolution of Cryptocurrency Market Share",
+    subtitle = "Daily percentage share of total market capitalization across crypto categories (2018–2026)",
+    x = "Date",
+    y = "Share of Market Capitalization",
+    fill = "Category",
+    caption = "Source: Daily cryptocurrency market dataset"
+  ) +
+  theme_minimal()
+```
